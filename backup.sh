@@ -1,29 +1,32 @@
 #!/bin/bash
 
-# Backup klasörünü oluştur
-mkdir -p ./backup
+# Create the backup name by formatting the current date and time
+backupName="backup_$(date +"%Y%m%d_%H%M")"
 
-# MariaDB veritabanı yedeğini al
-docker-compose exec mariadb sh -c 'exec mysqldump --all-databases --add-drop-database -u"$MYSQL_USER" -p"$MYSQL_PASSWORD"' > ./backup/dump.sql
+# Create the Backup folder
+mkdir -p ./$backupName
 
-# Appwrite hacimlerini yedekle
+# Backup MariaDB database
+docker-compose exec mariadb sh -c 'exec mysqldump --all-databases --add-drop-database -u"$MYSQL_USER" -p"$MYSQL_PASSWORD"' > "./${backupName}/dump.sql"
+
+# Backup Appwrite volumes
 appwrite_volumes=("uploads" "cache" "config" "certificates" "functions")
-for volume in "${appwrite_volumes[@]}"; do
-    docker run --rm --volumes-from "$(docker-compose ps -q appwrite)" -v $PWD/backup:/backup ubuntu bash -c "cd /storage/$volume && tar cvf /backup/$volume.tar ."
+for volume in ${appwrite_volumes[@]}; do
+    docker run --rm --volumes-from $(docker compose ps -q appwrite) -v "${PWD}/${backupName}:/backup" ubuntu bash -c "cd /storage/$volume && tar cvf /backup/$volume.tar ."
 done
 
-# Appwrite_appwrite-mariadb hacmini yedekle
-docker run --rm --volume appwrite_appwrite-mariadb:/var/lib/mysql --volume $PWD/backup:/backup ubuntu tar -cvf /backup/mariadb.tar -C /var/lib/mysql .
+# Backup appwrite_appwrite-mariadb volume
+docker run --rm --volume appwrite_appwrite-mariadb:/var/lib/mysql --volume "${PWD}/${backupName}:/backup" ubuntu tar -cvf /backup/mariadb.tar -C /var/lib/mysql .
 
-# appwrite_appwrite-influxdb hacmini yedekle
-docker run --rm --volume appwrite_appwrite-influxdb:/var/lib/docker/volumes/appwrite_appwrite-influxdb/_data --volume $PWD/backup:/backup ubuntu tar -cvf /backup/influxdb.tar -C /var/lib/docker/volumes/appwrite_appwrite-influxdb/_data .
+# Backup appwrite_appwrite-influxdb volume
+docker run --rm --volume appwrite_appwrite-influxdb:/var/lib/docker/volumes/appwrite_appwrite-influxdb/_data --volume "${PWD}/${backupName}:/backup" ubuntu tar -cvf /backup/influxdb.tar -C /var/lib/docker/volumes/appwrite_appwrite-influxdb/_data .
 
-# Appwrite-worker-deletes hacmini yedekle
-docker run --rm --volumes-from "$(docker-compose ps -q appwrite-worker-deletes)" -v $PWD/backup:/backup ubuntu bash -c "cd /storage/builds && tar cvf /backup/builds.tar ."
+# Backup appwrite-worker-deletes volume
+docker run --rm --volumes-from $(docker compose ps -q appwrite-worker-deletes) -v "${PWD}/${backupName}:/backup" ubuntu bash -c "cd /storage/builds && tar cvf /backup/builds.tar ."
 
-# Konfigürasyon dosyalarını kopyala
-cp docker-compose.yml ./backup/
-cp .env ./backup/
+# Copy configuration files
+cp docker-compose.yml "./${backupName}"
+cp .env "./${backupName}"
 if [ -f docker-compose.override.yml ]; then
-    cp docker-compose.override.yml ./backup/
+    cp docker-compose.override.yml "./${backupName}"
 fi
